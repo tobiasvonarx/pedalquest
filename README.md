@@ -1,25 +1,24 @@
-# Mapbox Streets Map
+# PedalQuest
 
-A simple web application that displays a Mapbox map with the streets style.
-
-## Setup
-
-1. Clone this repository
-2. Create a `.env` file in the root directory
-3. Add your Mapbox API key to the `.env` file:
-   ```
-   MAPBOX_API_KEY=your_mapbox_api_key_here
-   ```
-4. Open `index.html` in your web browser
+Interactive map showing Publibike stations in Switzerland with cycling isochrones.
 
 ## Features
 
-- Displays a full-screen Mapbox map
-- Uses the Mapbox Streets style
-- Centered on New York by default
-- Responsive design
+- Mapbox-powered interactive map
+- Real-time Publibike station locations
+- Cycling isochrones (10, 20, 30 minutes) from any station
+
+## Setup
+
+1. Clone the repository
+2. Add your Mapbox API key to `.env`:
+   ```
+   MAPBOX_API_KEY=your_key_here
+   ```
+3. Run `npm install`
+4. Start the server with `npm start`
 
 ## Requirements
 
-- A Mapbox API key (get one at [mapbox.com](https://www.mapbox.com/))
-- Modern web browser 
+- Node.js
+- Mapbox API key
