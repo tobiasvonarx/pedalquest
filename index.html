@@ -4,31 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PedalQuest</title>
-    <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <script src='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css' rel='stylesheet' />
+    <script src='https://unpkg.com/@turf/turf@6/turf.min.js'></script>
     <script src="/config.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
     <div id="map"></div>
     <button id="home-button" class="map-control">
         <span class="material-icons">home</span>
     </button>
+    <div class="route-panel">
+        <h3>Route Overview</h3>
+        <div id="route-stations"></div>
+        <div id="route-distances"></div>
+    </div>
     <div class="legend">
         <div class="legend-item">
-            <span class="legend-color" style="background-color: #ff0000; opacity: 0.6;"></span>
+            <span class="legend-color" style="background-color: #ff0000"></span>
             <span class="legend-label">10 minutes</span>
         </div>
         <div class="legend-item">
-            <span class="legend-color" style="background-color: #ffa500; opacity: 0.6;"></span>
+            <span class="legend-color" style="background-color: #ffa500"></span>
             <span class="legend-label">20 minutes</span>
         </div>
         <div class="legend-item">
-            <span class="legend-color" style="background-color: #ffff00; opacity: 0.6;"></span>
+            <span class="legend-color" style="background-color: #ffff00"></span>
             <span class="legend-label">30 minutes</span>
         </div>
     </div>
-    <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
     <script src="script.js"></script>
 </body>
 </html> 
