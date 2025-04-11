@@ -143,7 +143,7 @@ function initializeMap() {
         const stationsContainer = document.getElementById('route-stations');
         const distancesContainer = document.getElementById('route-distances');
         
-        // Update stations list
+        // Update stations list with integrated distance information
         stationsContainer.innerHTML = await Promise.all(selectedStations.map(async (station, index) => {
             // Get station details from cache or fetch them
             let stationDetails = stationDetailsCache.get(station.id);
@@ -159,12 +159,27 @@ function initializeMap() {
                 }
             }
             
-            return `
+            let html = `
                 <div class="station-item">
                     <span>${index + 1}. ${stationDetails.name}</span>
                     <span class="remove-station" data-id="${station.id}">×</span>
                 </div>
             `;
+
+            // Add distance information between stations
+            if (index < selectedStations.length - 1) {
+                const nextStation = selectedStations[index + 1];
+                const routeInfo = await showCyclingDirections(station, nextStation);
+                if (routeInfo) {
+                    html += `
+                        <div class="distance-item">
+                            ${routeInfo.distance} km • ${routeInfo.duration} min
+                        </div>
+                    `;
+                }
+            }
+
+            return html;
         })).then(html => html.join(''));
 
         // Clear existing route layers and sources
@@ -178,51 +193,16 @@ function initializeMap() {
             }
         });
 
+        
         // Update distances and show cycling directions
         distancesContainer.innerHTML = '';
         for (let i = 0; i < selectedStations.length - 1; i++) {
             const fromStation = selectedStations[i];
             const toStation = selectedStations[i + 1];
-            
-            // Get station names from cache or fetch them
-            let fromStationDetails = stationDetailsCache.get(fromStation.id);
-            let toStationDetails = stationDetailsCache.get(toStation.id);
-            
-            if (!fromStationDetails || !toStationDetails) {
-                try {
-                    const [fromResponse, toResponse] = await Promise.all([
-                        fetch(`https://rest.publibike.ch/v1/public/stations/${fromStation.id}`),
-                        fetch(`https://rest.publibike.ch/v1/public/stations/${toStation.id}`)
-                    ]);
-                    
-                    if (fromResponse.ok) {
-                        fromStationDetails = await fromResponse.json();
-                        stationDetailsCache.set(fromStation.id, fromStationDetails);
-                    }
-                    if (toResponse.ok) {
-                        toStationDetails = await toResponse.json();
-                        stationDetailsCache.set(toStation.id, toStationDetails);
-                    }
-                } catch (error) {
-                    console.error('Error fetching station details:', error);
-                }
-            }
-            
-            const routeInfo = await showCyclingDirections(fromStation, toStation);
-            
-            if (routeInfo) {
-                const fromName = fromStationDetails?.name || `Station ${fromStation.id}`;
-                const toName = toStationDetails?.name || `Station ${toStation.id}`;
-                
-                distancesContainer.innerHTML += `
-                    <div class="distance-item">
-                        ${fromName} → ${toName}:<br>
-                        Distance: ${routeInfo.distance} km<br>
-                        Duration: ${routeInfo.duration} minutes
-                    </div>
-                `;
-            }
+                        
+            await showCyclingDirections(fromStation, toStation);
         }
+
 
         // Add event listeners for remove buttons
         document.querySelectorAll('.remove-station').forEach(button => {
