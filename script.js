@@ -376,7 +376,7 @@ function initializeMap() {
 
             // Process Publibike stations
             publibikeStations.forEach(station => {
-                const key = `${station.latitude.toFixed(4)},${station.longitude.toFixed(4)}`;
+                const key = `${station.latitude.toFixed(3)},${station.longitude.toFixed(3)}`;
                 combinedStations.set(key, {
                     ...station,
                     source: 'publibike',
@@ -388,7 +388,7 @@ function initializeMap() {
 
             // Process Velospot stations and combine with Publibike stations
             velospotStations.forEach(station => {
-                const key = `${parseFloat(station.lat).toFixed(4)},${parseFloat(station.lng).toFixed(4)}`;
+                const key = `${parseFloat(station.lat).toFixed(3)},${parseFloat(station.lng).toFixed(3)}`;
                 const existingStation = combinedStations.get(key);
                 
                 if (existingStation) {
