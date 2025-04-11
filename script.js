@@ -211,6 +211,23 @@ function initializeMap() {
                 removeStation(stationId);
             });
         });
+
+        // Add share route functionality
+        document.getElementById('share-route').addEventListener('click', () => {
+            if (selectedStations.length < 2) {
+                alert('Please select at least two stations to share a route');
+                return;
+            }
+
+            // Create Google Maps URL with waypoints and cycling mode
+            const baseUrl = 'https://www.google.com/maps/dir/';
+            const waypoints = selectedStations.map(station => 
+                `${station.latitude},${station.longitude}`
+            ).join('/');
+            
+            const url = `${baseUrl}${waypoints}/?travelmode=bicycling`;
+            window.open(url, '_blank');
+        });
     }
 
     // Function to remove a station from the route
