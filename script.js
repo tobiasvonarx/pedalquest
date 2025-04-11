@@ -359,18 +359,69 @@ function initializeMap() {
     // Load and display bike stations
     async function loadBikeStations() {
         try {
-            const response = await fetch('https://rest.publibike.ch/v1/public/stations');
+            const response = await fetch('https://rest.publibike.ch/v1/public/all/stations');
             if (!response.ok) {
                 throw new Error('Failed to fetch bike stations');
             }
-            const stations = await response.json();
+            const data = await response.json();
+            const publibikeStations = data.publibike.stations;
+            const velospotStations = data.velospot.responseData;
 
             // Clear existing markers
             markers.forEach(marker => marker.remove());
             markers = [];
 
-            // Add markers for each station
-            stations.forEach(station => {
+            // Create a map to store combined station data
+            const combinedStations = new Map();
+
+            // Process Publibike stations
+            publibikeStations.forEach(station => {
+                const key = `${station.latitude.toFixed(4)},${station.longitude.toFixed(4)}`;
+                combinedStations.set(key, {
+                    ...station,
+                    source: 'publibike',
+                    totalBikes: station.vehicles.length,
+                    ebikes: station.vehicles.filter(v => v.type.name === 'E-Bike').length,
+                    regularBikes: station.vehicles.filter(v => v.type.name === 'Velo').length
+                });
+            });
+
+            // Process Velospot stations and combine with Publibike stations
+            velospotStations.forEach(station => {
+                const key = `${parseFloat(station.lat).toFixed(4)},${parseFloat(station.lng).toFixed(4)}`;
+                const existingStation = combinedStations.get(key);
+                
+                if (existingStation) {
+                    // Combine with existing Publibike station
+                    combinedStations.set(key, {
+                        ...existingStation,
+                        source: 'both',
+                        totalBikes: existingStation.totalBikes + parseInt(station.totalNonElectricalBike) + parseInt(station.totalElectricalBike),
+                        ebikes: existingStation.ebikes + parseInt(station.totalElectricalBike),
+                        regularBikes: existingStation.regularBikes + parseInt(station.totalNonElectricalBike)
+                    });
+                } else {
+                    // Add new Velospot station
+                    combinedStations.set(key, {
+                        id: station.station_id,
+                        name: station.station_name,
+                        latitude: parseFloat(station.lat),
+                        longitude: parseFloat(station.lng),
+                        address: station.station_address,
+                        state: { name: 'Aktiv' },
+                        source: 'velospot',
+                        totalBikes: parseInt(station.totalNonElectricalBike) + parseInt(station.totalElectricalBike),
+                        ebikes: parseInt(station.totalElectricalBike),
+                        regularBikes: parseInt(station.totalNonElectricalBike)
+                    });
+                }
+            });
+
+            // Add markers for each combined station
+            combinedStations.forEach(station => {
+                // Cache the station details
+                stationDetailsCache.set(station.id, station);
+
                 // Create a marker element
                 const el = document.createElement('div');
                 el.className = 'bike-marker';
@@ -392,61 +443,26 @@ function initializeMap() {
                     .setPopup(new mapboxgl.Popup({ offset: 25 })
                         .setHTML(`
                             <div style="padding: 10px;">
-                                <h3 style="margin: 0 0 5px 0;">Station ${station.id}</h3>
-                                <p style="margin: 0;">Status: ${station.state.name}</p>
-                                <p style="margin: 5px 0; color: #666;">Click for more details</p>
+                                <h3 style="margin: 0 0 5px 0;">${station.name}</h3>
+                                <p style="margin: 0;">${station.address}</p>
+                                <p style="margin: 5px 0;">Status: ${station.state.name}</p>
+                                <p style="margin: 0;">Total bikes: ${station.totalBikes}</p>
+                                <p style="margin: 0;">E-bikes: ${station.ebikes}</p>
+                                <p style="margin: 0;">Regular bikes: ${station.regularBikes}</p>
+                                <p style="margin: 5px 0; color: #666;">Provider: ${station.source === 'both' ? 'Publibike & Velospot' : station.source}</p>
                             </div>
                         `))
                     .addTo(map);
-
-                // Function to update popup with detailed information
-                async function updatePopupWithDetails() {
-                    // Check cache first
-                    if (stationDetailsCache.has(station.id)) {
-                        const stationDetails = stationDetailsCache.get(station.id);
-                        updatePopupContent(stationDetails);
-                        return;
-                    }
-
-                    try {
-                        const detailResponse = await fetch(`https://rest.publibike.ch/v1/public/stations/${station.id}`);
-                        if (!detailResponse.ok) {
-                            throw new Error('Failed to fetch station details');
-                        }
-                        const stationDetails = await detailResponse.json();
-                        
-                        // Cache the result
-                        stationDetailsCache.set(station.id, stationDetails);
-                        
-                        // Update popup content
-                        updatePopupContent(stationDetails);
-                    } catch (error) {
-                        console.error('Error fetching station details:', error);
-                    }
-                }
-
-                // Function to update popup content
-                function updatePopupContent(stationDetails) {
-                    const popup = marker.getPopup();
-                    popup.setHTML(`
-                        <div style="padding: 10px;">
-                            <h3 style="margin: 0 0 5px 0;">${stationDetails.name}</h3>
-                            <p style="margin: 0;">${stationDetails.address}</p>
-                            <p style="margin: 5px 0;">${stationDetails.zip} ${stationDetails.city}</p>
-                            <p style="margin: 0;">Status: ${stationDetails.state.name}</p>
-                            <p style="margin: 5px 0;">Available bikes: ${stationDetails.vehicles.length}</p>
-                        </div>
-                    `);
-                }
 
                 // Add hover event for basic information
                 el.addEventListener('mouseenter', () => {
                     const popup = marker.getPopup();
                     popup.setHTML(`
                         <div style="padding: 10px;">
-                            <h3 style="margin: 0 0 5px 0;">Station ${station.id}</h3>
+                            <h3 style="margin: 0 0 5px 0;">${station.name}</h3>
                             <p style="margin: 0;">Status: ${station.state.name}</p>
-                            <p style="margin: 5px 0; color: #666;">Click for more details</p>
+                            <p style="margin: 0;">Total bikes: ${station.totalBikes}</p>
+                            <p style="margin: 5px 0;">E-bikes: ${station.ebikes}</p>
                         </div>
                     `);
                     popup.addTo(map);
@@ -455,12 +471,12 @@ function initializeMap() {
                 // Add mouseleave event to close popup
                 el.addEventListener('mouseleave', () => {
                     const popup = marker.getPopup();
-                    if (!popup.isOpen()) return; // Don't try to close if already closed
+                    if (!popup.isOpen()) return;
                     popup.remove();
                 });
 
-                // Add click event for selection, isochrones, and detailed information
-                el.addEventListener('click', async () => {
+                // Add click event for selection and isochrones
+                el.addEventListener('click', () => {
                     // Toggle station selection
                     const index = selectedStations.findIndex(s => s.id === station.id);
                     if (index === -1) {
@@ -480,9 +496,6 @@ function initializeMap() {
                     updateRouteOverview();
                     updateMarkers();
                     showIsochrones(station.longitude, station.latitude);
-
-                    // Show detailed information
-                    await updatePopupWithDetails();
                 });
 
                 // Store the marker
