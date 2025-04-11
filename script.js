@@ -93,12 +93,16 @@ function initializeMap() {
 
             const data = await response.json();
             
-            // Remove existing route if any
-            if (map.getLayer('route')) map.removeLayer('route');
-            if (map.getSource('route')) map.removeSource('route');
+            // Create a unique source ID for this segment
+            const sourceId = `route-${fromStation.id}-${toStation.id}`;
+            const layerId = `route-${fromStation.id}-${toStation.id}`;
+
+            // Remove existing route layer and source if they exist
+            if (map.getLayer(layerId)) map.removeLayer(layerId);
+            if (map.getSource(sourceId)) map.removeSource(sourceId);
 
             // Add the route source
-            map.addSource('route', {
+            map.addSource(sourceId, {
                 type: 'geojson',
                 data: {
                     type: 'Feature',
@@ -109,9 +113,9 @@ function initializeMap() {
 
             // Add the route layer
             map.addLayer({
-                id: 'route',
+                id: layerId,
                 type: 'line',
-                source: 'route',
+                source: sourceId,
                 layout: {
                     'line-join': 'round',
                     'line-cap': 'round'
@@ -127,7 +131,7 @@ function initializeMap() {
             const distance = (data.routes[0].distance / 1000).toFixed(1); // Convert to km
             const duration = Math.round(data.routes[0].duration / 60); // Convert to minutes
             
-            return { distance, duration };
+            return { distance, duration, sourceId, layerId };
         } catch (error) {
             console.error('Error fetching cycling directions:', error);
             return null;
@@ -146,6 +150,17 @@ function initializeMap() {
                 <span class="remove-station" data-id="${station.id}">×</span>
             </div>
         `).join('');
+
+        // Clear existing route layers and sources
+        selectedStations.forEach((station, index) => {
+            if (index < selectedStations.length - 1) {
+                const nextStation = selectedStations[index + 1];
+                const layerId = `route-${station.id}-${nextStation.id}`;
+                const sourceId = `route-${station.id}-${nextStation.id}`;
+                if (map.getLayer(layerId)) map.removeLayer(layerId);
+                if (map.getSource(sourceId)) map.removeSource(sourceId);
+            }
+        });
 
         // Update distances and show cycling directions
         distancesContainer.innerHTML = '';
@@ -184,11 +199,26 @@ function initializeMap() {
     // Function to update marker styles
     function updateMarkers() {
         markers.forEach(marker => {
-            const stationId = marker.getElement().dataset.stationId;
-            if (selectedStations.some(station => station.id === parseInt(stationId))) {
-                marker.getElement().classList.add('selected');
+            const markerElement = marker.getElement();
+            const stationId = markerElement.dataset.stationId;
+            const isSelected = selectedStations.some(station => station.id === parseInt(stationId));
+            
+            // Remove any existing number
+            const existingNumber = markerElement.querySelector('.marker-number');
+            if (existingNumber) {
+                existingNumber.remove();
+            }
+            
+            if (isSelected) {
+                markerElement.classList.add('selected');
+                // Add number to the marker
+                const index = selectedStations.findIndex(station => station.id === parseInt(stationId));
+                const numberElement = document.createElement('div');
+                numberElement.className = 'marker-number';
+                numberElement.textContent = (index + 1).toString();
+                markerElement.appendChild(numberElement);
             } else {
-                marker.getElement().classList.remove('selected');
+                markerElement.classList.remove('selected');
             }
         });
     }
