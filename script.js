@@ -144,12 +144,28 @@ function initializeMap() {
         const distancesContainer = document.getElementById('route-distances');
         
         // Update stations list
-        stationsContainer.innerHTML = selectedStations.map((station, index) => `
-            <div class="station-item">
-                <span>${index + 1}. Station ${station.id}</span>
-                <span class="remove-station" data-id="${station.id}">×</span>
-            </div>
-        `).join('');
+        stationsContainer.innerHTML = await Promise.all(selectedStations.map(async (station, index) => {
+            // Get station details from cache or fetch them
+            let stationDetails = stationDetailsCache.get(station.id);
+            if (!stationDetails) {
+                try {
+                    const response = await fetch(`https://rest.publibike.ch/v1/public/stations/${station.id}`);
+                    if (!response.ok) throw new Error('Failed to fetch station details');
+                    stationDetails = await response.json();
+                    stationDetailsCache.set(station.id, stationDetails);
+                } catch (error) {
+                    console.error('Error fetching station details:', error);
+                    stationDetails = { name: `Station ${station.id}` }; // Fallback to ID if fetch fails
+                }
+            }
+            
+            return `
+                <div class="station-item">
+                    <span>${index + 1}. ${stationDetails.name}</span>
+                    <span class="remove-station" data-id="${station.id}">×</span>
+                </div>
+            `;
+        })).then(html => html.join(''));
 
         // Clear existing route layers and sources
         selectedStations.forEach((station, index) => {
@@ -167,12 +183,40 @@ function initializeMap() {
         for (let i = 0; i < selectedStations.length - 1; i++) {
             const fromStation = selectedStations[i];
             const toStation = selectedStations[i + 1];
+            
+            // Get station names from cache or fetch them
+            let fromStationDetails = stationDetailsCache.get(fromStation.id);
+            let toStationDetails = stationDetailsCache.get(toStation.id);
+            
+            if (!fromStationDetails || !toStationDetails) {
+                try {
+                    const [fromResponse, toResponse] = await Promise.all([
+                        fetch(`https://rest.publibike.ch/v1/public/stations/${fromStation.id}`),
+                        fetch(`https://rest.publibike.ch/v1/public/stations/${toStation.id}`)
+                    ]);
+                    
+                    if (fromResponse.ok) {
+                        fromStationDetails = await fromResponse.json();
+                        stationDetailsCache.set(fromStation.id, fromStationDetails);
+                    }
+                    if (toResponse.ok) {
+                        toStationDetails = await toResponse.json();
+                        stationDetailsCache.set(toStation.id, toStationDetails);
+                    }
+                } catch (error) {
+                    console.error('Error fetching station details:', error);
+                }
+            }
+            
             const routeInfo = await showCyclingDirections(fromStation, toStation);
             
             if (routeInfo) {
+                const fromName = fromStationDetails?.name || `Station ${fromStation.id}`;
+                const toName = toStationDetails?.name || `Station ${toStation.id}`;
+                
                 distancesContainer.innerHTML += `
                     <div class="distance-item">
-                        Station ${fromStation.id} → Station ${toStation.id}:<br>
+                        ${fromName} → ${toName}:<br>
                         Distance: ${routeInfo.distance} km<br>
                         Duration: ${routeInfo.duration} minutes
                     </div>
@@ -191,9 +235,40 @@ function initializeMap() {
 
     // Function to remove a station from the route
     function removeStation(stationId) {
-        selectedStations = selectedStations.filter(station => station.id !== stationId);
-        updateRouteOverview();
+        // Find the index of the station to be removed
+        const index = selectedStations.findIndex(station => station.id === stationId);
+        if (index === -1) return;
+
+        // Remove the station
+        selectedStations.splice(index, 1);
+
+        // Remove all existing route layers and sources
+        map.getStyle().layers.forEach(layer => {
+            if (layer.id.startsWith('route-')) {
+                map.removeLayer(layer.id);
+            }
+        });
+        Object.keys(map.getStyle().sources).forEach(sourceId => {
+            if (sourceId.startsWith('route-')) {
+                map.removeSource(sourceId);
+            }
+        });
+
+        // Update markers and route overview
         updateMarkers();
+        updateRouteOverview();
+
+        // If there are still stations in the route, show isochrones for the last station
+        if (selectedStations.length > 0) {
+            const lastStation = selectedStations[selectedStations.length - 1];
+            showIsochrones(lastStation.longitude, lastStation.latitude);
+        } else {
+            // If no stations left, remove all isochrone layers
+            if (map.getLayer('isochrone-30')) map.removeLayer('isochrone-30');
+            if (map.getLayer('isochrone-20')) map.removeLayer('isochrone-20');
+            if (map.getLayer('isochrone-10')) map.removeLayer('isochrone-10');
+            if (map.getSource('isochrones')) map.removeSource('isochrones');
+        }
     }
 
     // Function to update marker styles
@@ -278,6 +353,8 @@ function initializeMap() {
 
     // Store markers
     let markers = [];
+    // Cache for station details
+    const stationDetailsCache = new Map();
 
     // Load and display bike stations
     async function loadBikeStations() {
@@ -317,12 +394,73 @@ function initializeMap() {
                             <div style="padding: 10px;">
                                 <h3 style="margin: 0 0 5px 0;">Station ${station.id}</h3>
                                 <p style="margin: 0;">Status: ${station.state.name}</p>
+                                <p style="margin: 5px 0; color: #666;">Click for more details</p>
                             </div>
                         `))
                     .addTo(map);
 
-                // Add click event for selection and isochrones
-                el.addEventListener('click', () => {
+                // Function to update popup with detailed information
+                async function updatePopupWithDetails() {
+                    // Check cache first
+                    if (stationDetailsCache.has(station.id)) {
+                        const stationDetails = stationDetailsCache.get(station.id);
+                        updatePopupContent(stationDetails);
+                        return;
+                    }
+
+                    try {
+                        const detailResponse = await fetch(`https://rest.publibike.ch/v1/public/stations/${station.id}`);
+                        if (!detailResponse.ok) {
+                            throw new Error('Failed to fetch station details');
+                        }
+                        const stationDetails = await detailResponse.json();
+                        
+                        // Cache the result
+                        stationDetailsCache.set(station.id, stationDetails);
+                        
+                        // Update popup content
+                        updatePopupContent(stationDetails);
+                    } catch (error) {
+                        console.error('Error fetching station details:', error);
+                    }
+                }
+
+                // Function to update popup content
+                function updatePopupContent(stationDetails) {
+                    const popup = marker.getPopup();
+                    popup.setHTML(`
+                        <div style="padding: 10px;">
+                            <h3 style="margin: 0 0 5px 0;">${stationDetails.name}</h3>
+                            <p style="margin: 0;">${stationDetails.address}</p>
+                            <p style="margin: 5px 0;">${stationDetails.zip} ${stationDetails.city}</p>
+                            <p style="margin: 0;">Status: ${stationDetails.state.name}</p>
+                            <p style="margin: 5px 0;">Available bikes: ${stationDetails.vehicles.length}</p>
+                        </div>
+                    `);
+                }
+
+                // Add hover event for basic information
+                el.addEventListener('mouseenter', () => {
+                    const popup = marker.getPopup();
+                    popup.setHTML(`
+                        <div style="padding: 10px;">
+                            <h3 style="margin: 0 0 5px 0;">Station ${station.id}</h3>
+                            <p style="margin: 0;">Status: ${station.state.name}</p>
+                            <p style="margin: 5px 0; color: #666;">Click for more details</p>
+                        </div>
+                    `);
+                    popup.addTo(map);
+                });
+
+                // Add mouseleave event to close popup
+                el.addEventListener('mouseleave', () => {
+                    const popup = marker.getPopup();
+                    if (!popup.isOpen()) return; // Don't try to close if already closed
+                    popup.remove();
+                });
+
+                // Add click event for selection, isochrones, and detailed information
+                el.addEventListener('click', async () => {
                     // Toggle station selection
                     const index = selectedStations.findIndex(s => s.id === station.id);
                     if (index === -1) {
@@ -342,6 +480,9 @@ function initializeMap() {
                     updateRouteOverview();
                     updateMarkers();
                     showIsochrones(station.longitude, station.latitude);
+
+                    // Show detailed information
+                    await updatePopupWithDetails();
                 });
 
                 // Store the marker
